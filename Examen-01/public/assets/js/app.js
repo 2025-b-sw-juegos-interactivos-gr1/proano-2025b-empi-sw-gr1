@@ -11,6 +11,7 @@ window.addEventListener("DOMContentLoaded", function () {
   var playerMesh = null;
   var itemEnMano = null;
   var itemsEnCaja = 0;
+  var playerAnim = null;
   var inputMap = {};
   var itemsSueltos = [];
   var cajasDestino = [];
@@ -98,11 +99,13 @@ window.addEventListener("DOMContentLoaded", function () {
       playerMesh.position = new BABYLON.Vector3(0, 0.1, 0);
       playerMesh.checkCollisions = true;
 
-      if (result.animationGroups.length > 0)
-        result.animationGroups[0].play(true);
+      // --- GUARDAR ANIMACIÓN ---
+      if (result.animationGroups.length > 0) {
+        playerAnim = result.animationGroups[0];
+        playerAnim.play(true); // Iniciar
+        playerAnim.speedRatio = 0; // Pero pausada (quieto)
+      }
 
-      // --- CAMBIO IMPORTANTE AQUÍ ---
-      // Creamos el objetivo invisible para la cámara
       var camTarget = BABYLON.MeshBuilder.CreateBox(
         "camTarget",
         { size: 0.1 },
@@ -110,11 +113,7 @@ window.addEventListener("DOMContentLoaded", function () {
       );
       camTarget.isVisible = false;
       camTarget.parent = playerMesh;
-
-      // ANTES ERA 40 -> SUBE ESTO A 100 o 150
-      // Al ser el personaje tan pequeño (0.05), necesitamos un número local muy alto para llegar a la cabeza.
       camTarget.position.y = 1000;
-
       camera.lockedTarget = camTarget;
     });
 
@@ -163,7 +162,7 @@ window.addEventListener("DOMContentLoaded", function () {
         cajasDestino.push(cajaFake);
       });
 
-    // D. CALABAZAS (Con Hitbox 3x Ancho)
+    // D. CALABAZAS (Ejes X/Z Aleatorios + Anti-Superposición + Brillo)
     BABYLON.SceneLoader.ImportMeshAsync(
       "",
       "./assets/models/pumpkin/",
@@ -173,37 +172,60 @@ window.addEventListener("DOMContentLoaded", function () {
       var molde = result.meshes[0];
       molde.setEnabled(false);
 
-      // Crear 10 calabazas
+      var posicionesOcupadas = [];
+
       for (var i = 0; i < 10; i++) {
+        var x = 0,
+          z = 0;
+        var esValida = false;
+        var intentos = 0;
+
+        // --- ALGORITMO ANTI-SUPERPOSICIÓN ---
+        while (!esValida && intentos < 100) {
+          // EJE X (Izquierda/Derecha)
+          x = Math.random() * 1600 - 800;
+
+          // EJE Z (Adelante/Atrás) <--- AQUÍ ESTÁ EL CAMBIO QUE PEDISTE
+          z = Math.random() * 1600 - 800;
+
+          esValida = true;
+          for (var k = 0; k < posicionesOcupadas.length; k++) {
+            if (
+              BABYLON.Vector3.Distance(
+                new BABYLON.Vector3(x, 0, z),
+                posicionesOcupadas[k]
+              ) < 40
+            ) {
+              esValida = false;
+              break;
+            }
+          }
+          intentos++;
+        }
+        posicionesOcupadas.push(new BABYLON.Vector3(x, 0, z));
+
+        // Crear Clon
         var clon = molde.clone("calabaza_" + i, null);
         clon.setEnabled(true);
-        clon.scaling = new BABYLON.Vector3(10, 10, 10); // Tu escala visual
+        clon.scaling = new BABYLON.Vector3(10, 10, 10);
+        clon.position = new BABYLON.Vector3(x, 12, z);
 
-        // --- TUS COORDENADAS EXACTAS ---
-        var x = Math.random() * 1600 - 800;
-        var y = 12;
-        var z = Math.random() * 160 - 80;
-        clon.position = new BABYLON.Vector3(x, y, z);
-
-        // --- HITBOX INVISIBLE (3 VECES EL ANCHO) ---
-        // Visual = 10 -> Hitbox = 30
+        // Hitbox Invisible
         var hitBox = BABYLON.MeshBuilder.CreateBox(
-          "hitbox_cal_" + i,
+          "hit_" + i,
           { size: 1 },
           scene
         );
-        hitBox.scaling = new BABYLON.Vector3(30, 10, 30); // 3x ancho en X y Z
+        hitBox.scaling = new BABYLON.Vector3(30, 10, 30);
         hitBox.position = clon.position.clone();
-        hitBox.position.y += 5; // Centrar altura
+        hitBox.position.y += 5;
         hitBox.isVisible = false;
-        hitBox.checkCollisions = true; // ¡Chocarás con esto!
-
-        // Pegamos el hitbox a la calabaza para que viajen juntos
+        hitBox.checkCollisions = true;
         hitBox.parent = clon;
 
         itemsSueltos.push(clon);
 
-        // --- LUZ ---
+        // SOLO BRILLO (Sin haz de luz)
         highlightLayer.addMesh(clon, BABYLON.Color3.Yellow());
       }
     });
@@ -273,8 +295,11 @@ window.addEventListener("DOMContentLoaded", function () {
         btnAccion.isVisible = false;
       }
 
-      // --- 2. MOVIMIENTO (Tu código) ---
-      var velocidad = 1.7;
+      // 2. MOVIMIENTO + SPRINT (SHIFT)
+      // Detectar Shift (Izquierdo o Derecho)
+      var isSprinting = inputMap["shift"] || inputMap["Shift"];
+      var baseSpeed = isSprinting ? 3.4 : 1.7; // Doble velocidad si Shift
+
       var moveVector = new BABYLON.Vector3(0, 0, 0);
       var forward = camera.getForwardRay().direction;
       forward.y = 0;
@@ -286,12 +311,15 @@ window.addEventListener("DOMContentLoaded", function () {
       if (inputMap["d"]) moveVector.addInPlace(right);
       if (inputMap["a"]) moveVector.subtractInPlace(right);
 
+      var isMoving = false;
       if (moveVector.length() > 0) {
-        moveVector = moveVector.normalize().scale(velocidad);
+        isMoving = true;
+        moveVector = moveVector.normalize().scale(baseSpeed);
         playerMesh.position.addInPlace(moveVector);
+
         var targetRotation = Math.atan2(moveVector.x, moveVector.z);
         targetRotation += 0;
-        var rotationSpeed = 0.15;
+
         if (!playerMesh.rotationQuaternion)
           playerMesh.rotationQuaternion =
             BABYLON.Quaternion.RotationYawPitchRoll(
@@ -307,8 +335,19 @@ window.addEventListener("DOMContentLoaded", function () {
         playerMesh.rotationQuaternion = BABYLON.Quaternion.Slerp(
           playerMesh.rotationQuaternion,
           targetQuaternion,
-          rotationSpeed
+          0.15
         );
+      }
+
+      // --- CONTROL DE ANIMACIÓN ---
+      if (playerAnim) {
+        if (isMoving) {
+          // Si corre (Shift), animación rápida (1.5). Si camina, normal (1.0)
+          playerAnim.speedRatio = isSprinting ? 1.5 : 1.0;
+        } else {
+          // Si no se mueve, congelar animación
+          playerAnim.speedRatio = 0;
+        }
       }
 
       // --- 3. INTERACCIÓN (TECLA E) ---

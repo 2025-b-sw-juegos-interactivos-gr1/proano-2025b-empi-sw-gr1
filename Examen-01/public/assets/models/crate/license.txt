@@ -1,0 +1,11 @@
+Model Information:
+* title:	Capitulo 5: Caja
+* source:	https://sketchfab.com/3d-models/capitulo-5-caja-393f244b58d04f04b3cc28f4e09466ef
+* author:	MathiasC (https://sketchfab.com/MathiasC)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Capitulo 5: Caja" (https://sketchfab.com/3d-models/capitulo-5-caja-393f244b58d04f04b3cc28f4e09466ef) by MathiasC (https://sketchfab.com/MathiasC) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

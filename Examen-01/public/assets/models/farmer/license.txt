@@ -1,0 +1,11 @@
+Model Information:
+* title:	Farmer
+* source:	https://sketchfab.com/3d-models/farmer-1ef53a3d72af4dc9a4d8097a37fe8d7a
+* author:	Toby Dundon (https://sketchfab.com/tobyd)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Farmer" (https://sketchfab.com/3d-models/farmer-1ef53a3d72af4dc9a4d8097a37fe8d7a) by Toby Dundon (https://sketchfab.com/tobyd) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

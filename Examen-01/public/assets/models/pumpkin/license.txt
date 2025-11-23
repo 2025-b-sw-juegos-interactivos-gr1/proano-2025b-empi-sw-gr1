@@ -1,0 +1,11 @@
+Model Information:
+* title:	Pumpkin / Calabaza (PaperCraft)
+* source:	https://sketchfab.com/3d-models/pumpkin-calabaza-papercraft-bc0ca35cb6ce4fcd80bd19fadf56976d
+* author:	JarpPlay (https://sketchfab.com/Jarp_Play)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Pumpkin / Calabaza (PaperCraft)" (https://sketchfab.com/3d-models/pumpkin-calabaza-papercraft-bc0ca35cb6ce4fcd80bd19fadf56976d) by JarpPlay (https://sketchfab.com/Jarp_Play) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

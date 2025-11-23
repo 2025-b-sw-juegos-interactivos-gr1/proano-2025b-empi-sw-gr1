@@ -6,6 +6,7 @@ window.addEventListener("DOMContentLoaded", function () {
   // Si el pasto sigue muy alto, pon un número más negativo (ej: -20)
   // Si el pasto tapa al jugador, pon un número más cercano a 0 (ej: -2)
   var ALTURA_MAPA = -272;
+  var TIEMPO_MAXIMO = 60; // 60 Segundos para ganar
 
   // Variables de Juego
   var playerMesh = null;
@@ -13,11 +14,18 @@ window.addEventListener("DOMContentLoaded", function () {
   var itemsEnCaja = 0;
   var playerAnim = null;
   var inputMap = {};
+  var itemsEnCaja = 0;
   var itemsSueltos = [];
   var cajasDestino = [];
   var inventario = 0;
   var textoInventario = null; // Referencia al texto en pantalla
   var iconoInventario = null; // Referencia a la imagen
+  var textPuntaje = null;
+  var barraTiempo = null; // La parte que se encoge
+  var tiempoRestante = TIEMPO_MAXIMO;
+  var TIEMPO_MAXIMO = 60;
+  var juegoTerminado = false;
+  var textFinal = null;
 
   var createScene = function () {
     var scene = new BABYLON.Scene(engine);
@@ -248,16 +256,34 @@ window.addEventListener("DOMContentLoaded", function () {
     );
 
     // ==========================================
-    // GAME LOOP (Movimiento + Botón Inteligente)
+    // GAME LOOP (CON TIEMPO Y PUNTAJE)
     // ==========================================
     scene.onBeforeRenderObservable.add(() => {
+      if (juegoTerminado) return; // Si acabó, no hacer nada
       if (!playerMesh) return;
 
-      // --- 1. LÓGICA DE BOTÓN (UI) ---
+      // --- 1. LÓGICA DE TIEMPO ---
+      var delta = engine.getDeltaTime() / 1000;
+      tiempoRestante -= delta;
+
+      if (tiempoRestante <= 0) {
+        tiempoRestante = 0;
+        juegoTerminado = true;
+        textFinal.text = "¡TIEMPO FUERA!";
+        textFinal.isVisible = true;
+        if (playerAnim) playerAnim.speedRatio = 0; // Detener personaje
+      }
+
+      // Actualizar barra visualmente
+      if (barraTiempo) {
+        barraTiempo.height = tiempoRestante / TIEMPO_MAXIMO;
+        if (tiempoRestante < 10) barraTiempo.background = "red";
+      }
+
+      // --- 2. LÓGICA DE BOTONES (UI) ---
       var mostrarBoton = false;
       var textoBoton = "";
 
-      // Buscar calabaza cercana (Radio aumentado a 35 para superar el hitbox)
       var itemCercanoUI = null;
       if (!itemEnMano) {
         itemCercanoUI = itemsSueltos.find(
@@ -272,8 +298,6 @@ window.addEventListener("DOMContentLoaded", function () {
           btnAccion.background = "orange";
         }
       }
-
-      // Buscar caja cercana (Radio 35)
       var cajaCercanaUI = null;
       if (itemEnMano) {
         cajaCercanaUI = cajasDestino.find(
@@ -287,7 +311,6 @@ window.addEventListener("DOMContentLoaded", function () {
         }
       }
 
-      // Mostrar u ocultar botón
       if (mostrarBoton) {
         btnAccion.isVisible = true;
         btnAccion.children[0].text = textoBoton;
@@ -295,11 +318,9 @@ window.addEventListener("DOMContentLoaded", function () {
         btnAccion.isVisible = false;
       }
 
-      // 2. MOVIMIENTO + SPRINT (SHIFT)
-      // Detectar Shift (Izquierdo o Derecho)
+      // --- 3. MOVIMIENTO ---
       var isSprinting = inputMap["shift"] || inputMap["Shift"];
-      var baseSpeed = isSprinting ? 3.4 : 1.7; // Doble velocidad si Shift
-
+      var baseSpeed = isSprinting ? 3.4 : 1.7;
       var moveVector = new BABYLON.Vector3(0, 0, 0);
       var forward = camera.getForwardRay().direction;
       forward.y = 0;
@@ -339,118 +360,115 @@ window.addEventListener("DOMContentLoaded", function () {
         );
       }
 
-      // --- CONTROL DE ANIMACIÓN ---
       if (playerAnim) {
-        if (isMoving) {
-          // Si corre (Shift), animación rápida (1.5). Si camina, normal (1.0)
-          playerAnim.speedRatio = isSprinting ? 1.5 : 1.0;
-        } else {
-          // Si no se mueve, congelar animación
-          playerAnim.speedRatio = 0;
-        }
+        if (isMoving) playerAnim.speedRatio = isSprinting ? 1.5 : 1.0;
+        else playerAnim.speedRatio = 0;
       }
 
-      // --- 3. INTERACCIÓN (TECLA E) ---
+      // --- 4. INTERACCIÓN ---
       if (inputMap["e"] || inputMap["E"]) {
         inputMap["e"] = false;
         inputMap["E"] = false;
 
-        // RECOGER
         if (!itemEnMano && itemCercanoUI) {
-          highlightLayer.removeMesh(itemCercanoUI);
+          if (itemCercanoUI.luzCelestial) itemCercanoUI.luzCelestial.dispose();
+          // IMPORTANTE: Si usas HighlightLayer, asegúrate de haberlo creado al inicio o comenta esta línea
+          // highlightLayer.removeMesh(itemCercanoUI);
+
           itemCercanoUI.setParent(playerMesh);
-          // Ajuste de posición en mano (calibrado para tu escala)
           itemCercanoUI.position = new BABYLON.Vector3(50, 805, -605);
           itemCercanoUI.rotation = new BABYLON.Vector3(0, 0, 0);
-
-          // ¡IMPORTANTE! Desactivar colisión del hitbox hijo para no atrapar al jugador
           itemCercanoUI
             .getChildMeshes()
             .forEach((m) => (m.checkCollisions = false));
 
           itemEnMano = itemCercanoUI;
-          console.log("¡Calabaza cargada!");
-        }
-        // ENTREGAR
-        else if (itemEnMano && cajaCercanaUI) {
+        } else if (itemEnMano && cajaCercanaUI) {
           itemEnMano.setParent(null);
           itemEnMano.position = cajaCercanaUI.position.clone();
           itemEnMano.position.y = 1.5 + itemsEnCaja * 1.2;
-
-          // Reactivar colisión al soltarla (opcional, para que haga bulto)
           itemEnMano
             .getChildMeshes()
             .forEach((m) => (m.checkCollisions = true));
 
           itemEnMano = null;
           itemsEnCaja++;
-          console.log("¡Entregada!");
+
+          // ACTUALIZAR PUNTAJE
+          if (textPuntaje)
+            textPuntaje.text = "Calabazas: " + itemsEnCaja + " / 10";
+
+          if (itemsEnCaja >= 10) {
+            juegoTerminado = true;
+            textFinal.text = "¡GANASTE!";
+            textFinal.color = "#00FF00";
+            textFinal.isVisible = true;
+            if (playerAnim) playerAnim.speedRatio = 0;
+          }
         }
       }
     });
 
     // ==========================================
-    // PEGAR ESTO: INTERFAZ DE USUARIO (GUI)
+    // NUEVA INTERFAZ (HUD)
     // ==========================================
     var advancedTexture =
       BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
 
-    // Contenedor del inventario (Abajo al centro)
-    var panelInventario = new BABYLON.GUI.StackPanel();
-    panelInventario.width = "200px";
-    panelInventario.height = "100px";
-    panelInventario.verticalAlignment =
-      BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
-    advancedTexture.addControl(panelInventario);
-
-    // Fondo del slot (Cuadro gris estilo Minecraft)
-    var slot = new BABYLON.GUI.Rectangle();
-    slot.width = "80px";
-    slot.height = "80px";
-    slot.thickness = 4;
-    slot.color = "#3d3d3d";
-    slot.background = "#8b8b8b";
-    panelInventario.addControl(slot);
-
-    // Imagen de la calabaza (Usa tu textura existente como icono)
-    // NOTA: Asegúrate que esta ruta coincida con la textura de tu calabaza
-    iconoInventario = new BABYLON.GUI.Image(
-      "icon",
-      "./assets/models/pumpkin/pumpkin_tex.png"
-    );
-    iconoInventario.width = "60px";
-    iconoInventario.height = "60px";
-    iconoInventario.isVisible = false; // Invisible hasta que recojas una
-    slot.addControl(iconoInventario);
-
-    // Número contador
-    textoInventario = new BABYLON.GUI.TextBlock();
-    textoInventario.text = "0";
-    textoInventario.color = "white";
-    textoInventario.fontSize = 24;
-    textoInventario.fontFamily = "monospace";
-    textoInventario.textHorizontalAlignment =
+    // 1. PUNTAJE (Arriba Derecha)
+    var textPuntaje = new BABYLON.GUI.TextBlock();
+    textPuntaje.text = "Calabazas: 0 / 10";
+    textPuntaje.color = "#FF9900";
+    textPuntaje.fontSize = 30;
+    textPuntaje.top = "20px";
+    textPuntaje.left = "-20px";
+    textPuntaje.textHorizontalAlignment =
       BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    textoInventario.textVerticalAlignment =
+    textPuntaje.textVerticalAlignment =
+      BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+    advancedTexture.addControl(textPuntaje);
+
+    // 2. BARRA DE TIEMPO (Izquierda)
+    var contBarra = new BABYLON.GUI.Rectangle();
+    contBarra.horizontalAlignment =
+      BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+    contBarra.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_CENTER;
+    contBarra.left = "20px";
+    contBarra.width = "30px";
+    contBarra.height = "400px";
+    contBarra.color = "white";
+    contBarra.background = "rgba(0,0,0,0.5)";
+    advancedTexture.addControl(contBarra);
+
+    var barraTiempo = new BABYLON.GUI.Rectangle(); // Esta variable usa el Loop
+    barraTiempo.width = "20px";
+    barraTiempo.height = "100%";
+    barraTiempo.background = "#00FF00";
+    barraTiempo.verticalAlignment =
       BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
-    textoInventario.paddingRight = "5px";
-    textoInventario.paddingBottom = "5px";
-    textoInventario.isVisible = false;
-    slot.addControl(textoInventario);
-    // ==========================================
-    // --- BOTÓN DEACCIÓN CONTEXTUAL ---
+    contBarra.addControl(barraTiempo);
+
+    // 3. MENSAJE FINAL
+    var textFinal = new BABYLON.GUI.TextBlock(); // Esta variable usa el Loop
+    textFinal.text = "";
+    textFinal.color = "red";
+    textFinal.fontSize = 60;
+    textFinal.isVisible = false;
+    advancedTexture.addControl(textFinal);
+
+    // 4. BOTÓN DE ACCIÓN (Tu botón existente)
     var btnAccion = BABYLON.GUI.Button.CreateSimpleButton(
       "btnAccion",
-      "ENTREGAR (E)"
+      "ACCIÓN"
     );
     btnAccion.width = "200px";
     btnAccion.height = "60px";
     btnAccion.color = "white";
     btnAccion.background = "green";
     btnAccion.cornerRadius = 10;
-    btnAccion.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_CENTER; // Centro pantalla
-    btnAccion.top = "-50px"; // Un poco arriba
-    btnAccion.isVisible = false; // Oculto hasta acercarse
+    btnAccion.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_CENTER;
+    btnAccion.top = "-50px";
+    btnAccion.isVisible = false;
     advancedTexture.addControl(btnAccion);
 
     return scene;

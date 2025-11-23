@@ -2,37 +2,37 @@ window.addEventListener("DOMContentLoaded", function () {
   var canvas = document.getElementById("renderCanvas");
   var engine = new BABYLON.Engine(canvas, true);
 
-  // --- CONFIGURACIÓN DE AJUSTE (¡LA CLAVE!) ---
-  // Si el pasto sigue muy alto, pon un número más negativo (ej: -20)
-  // Si el pasto tapa al jugador, pon un número más cercano a 0 (ej: -2)
+  // --- CONFIGURACIÓN ---
   var ALTURA_MAPA = -272;
-  var TIEMPO_MAXIMO = 60; // 60 Segundos para ganar
+  var TIEMPO_MAXIMO = 10;
 
-  // Variables de Juego
+  // Variables Globales
+  var juegoIniciado = false;
   var playerMesh = null;
+  var playerAnim = null;
   var itemEnMano = null;
   var itemsEnCaja = 0;
-  var playerAnim = null;
+  var juegoTerminado = false;
+
   var inputMap = {};
-  var itemsEnCaja = 0;
   var itemsSueltos = [];
   var cajasDestino = [];
-  var inventario = 0;
-  var textoInventario = null; // Referencia al texto en pantalla
-  var iconoInventario = null; // Referencia a la imagen
+
+  // UI Vars
   var textPuntaje = null;
-  var barraTiempo = null; // La parte que se encoge
-  var tiempoRestante = TIEMPO_MAXIMO;
-  var TIEMPO_MAXIMO = 60;
-  var juegoTerminado = false;
+  var barraTiempo = null;
   var textFinal = null;
+  var textInicio = null;
+  var tiempoRestante = TIEMPO_MAXIMO;
+  var iconoInventario = null;
+  var textoInventario = null;
 
   var createScene = function () {
     var scene = new BABYLON.Scene(engine);
     scene.collisionsEnabled = true;
 
     // 1. AMBIENTE
-    scene.clearColor = new BABYLON.Color3(0.4, 0.7, 0.9); // Cielo azul
+    scene.clearColor = new BABYLON.Color3(0.4, 0.7, 0.9);
     var highlightLayer = new BABYLON.HighlightLayer("hl1", scene);
 
     // 2. LUCES
@@ -42,7 +42,6 @@ window.addEventListener("DOMContentLoaded", function () {
       scene
     );
     hemiLight.intensity = 0.6;
-
     var dirLight = new BABYLON.DirectionalLight(
       "dir",
       new BABYLON.Vector3(-1, -2, -1),
@@ -51,7 +50,7 @@ window.addEventListener("DOMContentLoaded", function () {
     dirLight.position = new BABYLON.Vector3(50, 50, 50);
     dirLight.intensity = 0.8;
 
-    // 3. SUELO INVISIBLE (Seguridad)
+    // 3. SUELO INVISIBLE
     var ground = BABYLON.MeshBuilder.CreateGround(
       "ground",
       { width: 200, height: 200 },
@@ -69,17 +68,183 @@ window.addEventListener("DOMContentLoaded", function () {
       scene
     );
     camera.attachControl(canvas, true);
-
-    // --- AJUSTES DE VELOCIDAD ---
-    camera.angularSensibilityX = 500; // Menor número = Mouse más rápido (Default es 1000)
+    camera.angularSensibilityX = 500;
     camera.angularSensibilityY = 500;
-    camera.wheelPrecision = 10; // Zoom más rápido (Default 50, menor es más rápido)
+    camera.wheelPrecision = 10;
+
+    // ==========================================
+    // INTERFAZ GRÁFICA (GUI)
+    // ==========================================
+    var advancedTexture =
+      BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+
+    // PANTALLA DE INICIO
+    textInicio = new BABYLON.GUI.TextBlock();
+    textInicio.text = "PRESIONA ESPACIO\nPARA INICIAR";
+    textInicio.color = "white";
+    textInicio.fontSize = 60;
+    textInicio.outlineWidth = 4;
+    textInicio.outlineColor = "black";
+    textInicio.fontWeight = "bold";
+    advancedTexture.addControl(textInicio);
+
+    // HUD DE JUEGO (Contenedor principal)
+    var hudContainer = new BABYLON.GUI.Container();
+    hudContainer.isVisible = false;
+    advancedTexture.addControl(hudContainer);
+
+    // Botón Contextual
+    var btnAccion = BABYLON.GUI.Button.CreateSimpleButton(
+      "btnAccion",
+      "ENTREGAR (E)"
+    );
+    btnAccion.width = "200px";
+    btnAccion.height = "60px";
+    btnAccion.color = "white";
+    btnAccion.background = "green";
+    btnAccion.cornerRadius = 10;
+    btnAccion.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_CENTER;
+    btnAccion.top = "-50px";
+    btnAccion.isVisible = false;
+    hudContainer.addControl(btnAccion);
+
+    // Inventario
+    var panelInv = new BABYLON.GUI.StackPanel();
+    panelInv.width = "200px";
+    panelInv.height = "100px";
+    panelInv.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
+    hudContainer.addControl(panelInv);
+
+    var slot = new BABYLON.GUI.Rectangle();
+    slot.width = "80px";
+    slot.height = "80px";
+    slot.thickness = 4;
+    slot.color = "#3d3d3d";
+    slot.background = "#8b8b8b";
+    panelInv.addControl(slot);
+
+    iconoInventario = new BABYLON.GUI.Image(
+      "icon",
+      "./assets/models/pumpkin/pumpkin_tex.png"
+    );
+    iconoInventario.width = "60px";
+    iconoInventario.height = "60px";
+    iconoInventario.isVisible = false;
+    slot.addControl(iconoInventario);
+
+    // Puntaje
+    textPuntaje = new BABYLON.GUI.TextBlock();
+    textPuntaje.text = "0 / 10";
+    textPuntaje.color = "#FF9900";
+    textPuntaje.fontSize = 30;
+    textPuntaje.top = "20px";
+    textPuntaje.left = "-20px";
+    textPuntaje.textHorizontalAlignment =
+      BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    textPuntaje.textVerticalAlignment =
+      BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+    hudContainer.addControl(textPuntaje);
+
+    // Barra de Tiempo
+    var contBarra = new BABYLON.GUI.Rectangle();
+    contBarra.horizontalAlignment =
+      BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+    contBarra.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_CENTER;
+    contBarra.left = "20px";
+    contBarra.width = "30px";
+    contBarra.height = "400px";
+    contBarra.color = "white";
+    contBarra.background = "rgba(0,0,0,0.5)";
+    hudContainer.addControl(contBarra);
+
+    barraTiempo = new BABYLON.GUI.Rectangle();
+    barraTiempo.width = "20px";
+    barraTiempo.height = "100%";
+    barraTiempo.background = "#00FF00";
+    barraTiempo.verticalAlignment =
+      BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
+    contBarra.addControl(barraTiempo);
+
+    // --- PANTALLA FINAL ---
+    var screenFinal = new BABYLON.GUI.Rectangle();
+    screenFinal.width = "100%";
+    screenFinal.height = "100%";
+    screenFinal.thickness = 0;
+    screenFinal.isVisible = false;
+    advancedTexture.addControl(screenFinal);
+
+    var bgFinal = new BABYLON.GUI.Image("bg", "./assets/models/cargando.png");
+    bgFinal.stretch = BABYLON.GUI.Image.STRETCH_FILL;
+    screenFinal.addControl(bgFinal);
+
+    var panelFin = new BABYLON.GUI.StackPanel();
+    screenFinal.addControl(panelFin);
+
+    textFinal = new BABYLON.GUI.TextBlock();
+    textFinal.text = "FIN DEL JUEGO";
+    textFinal.color = "white";
+    textFinal.fontSize = 80;
+    textFinal.height = "150px";
+    textFinal.outlineWidth = 5;
+    textFinal.outlineColor = "black";
+    panelFin.addControl(textFinal);
+
+    var btnRetry = BABYLON.GUI.Button.CreateSimpleButton(
+      "btnRetry",
+      "REINTENTAR"
+    );
+    btnRetry.width = "300px";
+    btnRetry.height = "80px";
+    btnRetry.color = "white";
+    btnRetry.background = "#FF9900";
+    btnRetry.cornerRadius = 20;
+    btnRetry.fontSize = 30;
+    btnRetry.onPointerUpObservable.add(() => location.reload());
+    panelFin.addControl(btnRetry);
+
+    // --- FUNCIÓN VIDEO ---
+    var reproducirCine = function (nombreVideo, mensaje, colorMensaje) {
+      juegoTerminado = true;
+      hudContainer.isVisible = false;
+
+      // Fondo negro para cine
+      var fondoNegro = document.createElement("div");
+      fondoNegro.style.position = "absolute";
+      fondoNegro.style.top = "0";
+      fondoNegro.style.left = "0";
+      fondoNegro.style.width = "100%";
+      fondoNegro.style.height = "100%";
+      fondoNegro.style.backgroundColor = "black";
+      fondoNegro.style.zIndex = "99";
+      document.body.appendChild(fondoNegro);
+
+      var vid = document.createElement("video");
+      vid.src = "./assets/models/" + nombreVideo;
+      vid.style.position = "absolute";
+      vid.style.top = "0";
+      vid.style.left = "0";
+      vid.style.width = "100%";
+      vid.style.height = "100%";
+      vid.style.objectFit = "contain";
+
+      vid.style.zIndex = "100";
+      vid.autoplay = true;
+      vid.controls = false;
+      document.body.appendChild(vid);
+
+      vid.onended = function () {
+        vid.remove();
+        fondoNegro.remove();
+        screenFinal.isVisible = true;
+        textFinal.text = mensaje;
+        textFinal.color = colorMensaje;
+      };
+    };
 
     // ==========================================
     // CARGA DE ASSETS
     // ==========================================
 
-    // A. EL MAPA (Bajándolo para que no flote)
     BABYLON.SceneLoader.ImportMeshAsync(
       "",
       "./assets/models/low_poly_farm/",
@@ -87,15 +252,10 @@ window.addEventListener("DOMContentLoaded", function () {
       scene
     ).then((result) => {
       var mapRoot = result.meshes[0];
-      mapRoot.scaling = new BABYLON.Vector3(10, 10, 10); // Escala x10
-
-      // ¡AQUÍ ESTÁ EL TRUCO! Bajamos el mapa
+      mapRoot.scaling = new BABYLON.Vector3(10, 10, 10);
       mapRoot.position = new BABYLON.Vector3(0, ALTURA_MAPA, 0);
-
-      console.log("Mapa cargado y ajustado a altura: " + ALTURA_MAPA);
     });
 
-    // B. JUGADOR
     BABYLON.SceneLoader.ImportMeshAsync(
       "",
       "./assets/models/farmer/",
@@ -107,11 +267,10 @@ window.addEventListener("DOMContentLoaded", function () {
       playerMesh.position = new BABYLON.Vector3(0, 0.1, 0);
       playerMesh.checkCollisions = true;
 
-      // --- GUARDAR ANIMACIÓN ---
       if (result.animationGroups.length > 0) {
         playerAnim = result.animationGroups[0];
-        playerAnim.play(true); // Iniciar
-        playerAnim.speedRatio = 0; // Pero pausada (quieto)
+        playerAnim.play(true);
+        playerAnim.speedRatio = 0;
       }
 
       var camTarget = BABYLON.MeshBuilder.CreateBox(
@@ -125,7 +284,6 @@ window.addEventListener("DOMContentLoaded", function () {
       camera.lockedTarget = camTarget;
     });
 
-    // C. CAJA (Con Hitbox Ancho)
     BABYLON.SceneLoader.ImportMeshAsync(
       "",
       "./assets/models/crate/",
@@ -134,32 +292,23 @@ window.addEventListener("DOMContentLoaded", function () {
     )
       .then((result) => {
         var caja = result.meshes[0];
-        caja.scaling = new BABYLON.Vector3(25, 25, 25); // Visual
+        caja.scaling = new BABYLON.Vector3(25, 25, 25);
         caja.position = new BABYLON.Vector3(55, 25, 5);
 
-        // --- HITBOX INVISIBLE ---
         var cajaHitbox = BABYLON.MeshBuilder.CreateBox(
           "cajaHitbox",
           { size: 1 },
           scene
         );
-        cajaHitbox.position = caja.position.clone();
-
-        // AJUSTE DE CENTRO (Subir mitad de altura)
-        cajaHitbox.position.y += 12.5;
-
-        // --- AQUÍ LO HACEMOS MÁS ANCHO ---
-        // X=35, Z=35 (Más ancho que la visual de 25)
-        // Y=25 (Misma altura)
         cajaHitbox.scaling = new BABYLON.Vector3(35, 25, 35);
-
+        cajaHitbox.position = caja.position.clone();
+        cajaHitbox.position.y += 12.5;
         cajaHitbox.isVisible = false;
-        cajaHitbox.checkCollisions = true; // El jugador chocará antes de tocar la caja visual
+        cajaHitbox.checkCollisions = true;
 
         cajasDestino.push(caja);
       })
       .catch(() => {
-        // Fallback (Caja Falsa)
         var cajaFake = BABYLON.MeshBuilder.CreateBox(
           "cajaFake",
           { size: 25 },
@@ -170,7 +319,6 @@ window.addEventListener("DOMContentLoaded", function () {
         cajasDestino.push(cajaFake);
       });
 
-    // D. CALABAZAS (Ejes X/Z Aleatorios + Anti-Superposición + Brillo)
     BABYLON.SceneLoader.ImportMeshAsync(
       "",
       "./assets/models/pumpkin/",
@@ -183,19 +331,18 @@ window.addEventListener("DOMContentLoaded", function () {
       var posicionesOcupadas = [];
 
       for (var i = 0; i < 10; i++) {
+        var clon = molde.clone("calabaza_" + i, null);
+        clon.setEnabled(true);
+        clon.scaling = new BABYLON.Vector3(10, 10, 10);
+
         var x = 0,
           z = 0;
         var esValida = false;
         var intentos = 0;
 
-        // --- ALGORITMO ANTI-SUPERPOSICIÓN ---
         while (!esValida && intentos < 100) {
-          // EJE X (Izquierda/Derecha)
           x = Math.random() * 1600 - 800;
-
-          // EJE Z (Adelante/Atrás) <--- AQUÍ ESTÁ EL CAMBIO QUE PEDISTE
           z = Math.random() * 1600 - 800;
-
           esValida = true;
           for (var k = 0; k < posicionesOcupadas.length; k++) {
             if (
@@ -211,14 +358,8 @@ window.addEventListener("DOMContentLoaded", function () {
           intentos++;
         }
         posicionesOcupadas.push(new BABYLON.Vector3(x, 0, z));
-
-        // Crear Clon
-        var clon = molde.clone("calabaza_" + i, null);
-        clon.setEnabled(true);
-        clon.scaling = new BABYLON.Vector3(10, 10, 10);
         clon.position = new BABYLON.Vector3(x, 12, z);
 
-        // Hitbox Invisible
         var hitBox = BABYLON.MeshBuilder.CreateBox(
           "hit_" + i,
           { size: 1 },
@@ -232,14 +373,12 @@ window.addEventListener("DOMContentLoaded", function () {
         hitBox.parent = clon;
 
         itemsSueltos.push(clon);
-
-        // SOLO BRILLO (Sin haz de luz)
         highlightLayer.addMesh(clon, BABYLON.Color3.Yellow());
       }
     });
 
     // ==========================================
-    // CONTROLES DE MOVIMIENTO (WASD)
+    // GAME LOOP
     // ==========================================
     scene.actionManager = new BABYLON.ActionManager(scene);
     scene.actionManager.registerAction(
@@ -255,32 +394,40 @@ window.addEventListener("DOMContentLoaded", function () {
       )
     );
 
-    // ==========================================
-    // GAME LOOP (CON TIEMPO Y PUNTAJE)
-    // ==========================================
     scene.onBeforeRenderObservable.add(() => {
-      if (juegoTerminado) return; // Si acabó, no hacer nada
+      if (!juegoIniciado) {
+        if (inputMap[" "]) {
+          juegoIniciado = true;
+          textInicio.isVisible = false;
+          hudContainer.isVisible = true;
+          inputMap[" "] = false;
+        }
+        return;
+      }
+
+      if (juegoTerminado) return;
       if (!playerMesh) return;
 
-      // --- 1. LÓGICA DE TIEMPO ---
+      // --- 1. TIEMPO ---
       var delta = engine.getDeltaTime() / 1000;
       tiempoRestante -= delta;
 
       if (tiempoRestante <= 0) {
         tiempoRestante = 0;
-        juegoTerminado = true;
-        textFinal.text = "¡TIEMPO FUERA!";
-        textFinal.isVisible = true;
-        if (playerAnim) playerAnim.speedRatio = 0; // Detener personaje
+        if (!juegoTerminado) {
+          reproducirCine(
+            "Mercado_Fin_Del_Juego_Incompleto.mp4",
+            "¡TIEMPO FUERA!",
+            "red"
+          );
+        }
+        if (playerAnim) playerAnim.speedRatio = 0;
       }
 
-      // Actualizar barra visualmente
-      if (barraTiempo) {
-        barraTiempo.height = tiempoRestante / TIEMPO_MAXIMO;
-        if (tiempoRestante < 10) barraTiempo.background = "red";
-      }
+      barraTiempo.height = tiempoRestante / TIEMPO_MAXIMO;
+      if (tiempoRestante < 10) barraTiempo.background = "red";
 
-      // --- 2. LÓGICA DE BOTONES (UI) ---
+      // --- 2. UI ---
       var mostrarBoton = false;
       var textoBoton = "";
 
@@ -371,9 +518,7 @@ window.addEventListener("DOMContentLoaded", function () {
         inputMap["E"] = false;
 
         if (!itemEnMano && itemCercanoUI) {
-          if (itemCercanoUI.luzCelestial) itemCercanoUI.luzCelestial.dispose();
-          // IMPORTANTE: Si usas HighlightLayer, asegúrate de haberlo creado al inicio o comenta esta línea
-          // highlightLayer.removeMesh(itemCercanoUI);
+          highlightLayer.removeMesh(itemCercanoUI);
 
           itemCercanoUI.setParent(playerMesh);
           itemCercanoUI.position = new BABYLON.Vector3(50, 805, -605);
@@ -383,6 +528,7 @@ window.addEventListener("DOMContentLoaded", function () {
             .forEach((m) => (m.checkCollisions = false));
 
           itemEnMano = itemCercanoUI;
+          iconoInventario.isVisible = true;
         } else if (itemEnMano && cajaCercanaUI) {
           itemEnMano.setParent(null);
           itemEnMano.position = cajaCercanaUI.position.clone();
@@ -394,82 +540,21 @@ window.addEventListener("DOMContentLoaded", function () {
           itemEnMano = null;
           itemsEnCaja++;
 
-          // ACTUALIZAR PUNTAJE
-          if (textPuntaje)
-            textPuntaje.text = "Calabazas: " + itemsEnCaja + " / 10";
+          textPuntaje.text = "Calabazas: " + itemsEnCaja + " / 10";
+          iconoInventario.isVisible = false;
 
           if (itemsEnCaja >= 10) {
-            juegoTerminado = true;
-            textFinal.text = "¡GANASTE!";
-            textFinal.color = "#00FF00";
-            textFinal.isVisible = true;
-            if (playerAnim) playerAnim.speedRatio = 0;
+            if (!juegoTerminado) {
+              reproducirCine(
+                "Mercado_Fin_Del_Juego.mp4",
+                "¡GANASTE!",
+                "#00FF00"
+              );
+            }
           }
         }
       }
     });
-
-    // ==========================================
-    // NUEVA INTERFAZ (HUD)
-    // ==========================================
-    var advancedTexture =
-      BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
-
-    // 1. PUNTAJE (Arriba Derecha)
-    var textPuntaje = new BABYLON.GUI.TextBlock();
-    textPuntaje.text = "Calabazas: 0 / 10";
-    textPuntaje.color = "#FF9900";
-    textPuntaje.fontSize = 30;
-    textPuntaje.top = "20px";
-    textPuntaje.left = "-20px";
-    textPuntaje.textHorizontalAlignment =
-      BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    textPuntaje.textVerticalAlignment =
-      BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
-    advancedTexture.addControl(textPuntaje);
-
-    // 2. BARRA DE TIEMPO (Izquierda)
-    var contBarra = new BABYLON.GUI.Rectangle();
-    contBarra.horizontalAlignment =
-      BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
-    contBarra.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_CENTER;
-    contBarra.left = "20px";
-    contBarra.width = "30px";
-    contBarra.height = "400px";
-    contBarra.color = "white";
-    contBarra.background = "rgba(0,0,0,0.5)";
-    advancedTexture.addControl(contBarra);
-
-    var barraTiempo = new BABYLON.GUI.Rectangle(); // Esta variable usa el Loop
-    barraTiempo.width = "20px";
-    barraTiempo.height = "100%";
-    barraTiempo.background = "#00FF00";
-    barraTiempo.verticalAlignment =
-      BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
-    contBarra.addControl(barraTiempo);
-
-    // 3. MENSAJE FINAL
-    var textFinal = new BABYLON.GUI.TextBlock(); // Esta variable usa el Loop
-    textFinal.text = "";
-    textFinal.color = "red";
-    textFinal.fontSize = 60;
-    textFinal.isVisible = false;
-    advancedTexture.addControl(textFinal);
-
-    // 4. BOTÓN DE ACCIÓN (Tu botón existente)
-    var btnAccion = BABYLON.GUI.Button.CreateSimpleButton(
-      "btnAccion",
-      "ACCIÓN"
-    );
-    btnAccion.width = "200px";
-    btnAccion.height = "60px";
-    btnAccion.color = "white";
-    btnAccion.background = "green";
-    btnAccion.cornerRadius = 10;
-    btnAccion.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_CENTER;
-    btnAccion.top = "-50px";
-    btnAccion.isVisible = false;
-    advancedTexture.addControl(btnAccion);
 
     return scene;
   };
